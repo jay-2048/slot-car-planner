@@ -1,0 +1,9 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 防止 iPad 上的橡皮筋捲動效果 */
+body {
+    overscroll-behavior-y: none;
+    overflow: hidden;
+}
