@@ -10,7 +10,7 @@ import {
     Palette, Ruler, Copy, Focus, ArrowLeftRight
 } from 'lucide-react';
 
-const APP_VERSION = "v5.0.0 (Slot Car Planner)";
+const APP_VERSION = "v5.0.3 (Hairpin Crash Fix)";
 
 // ==========================================
 // 1. GLOBAL CONSTANTS & HELPERS (Outside Component)
@@ -34,6 +34,8 @@ const I18N={
 };
 const TRACK_DATA={AFX:{name:"Tomy AFX",color:"#2563eb",trackColor:"#334155",laneSpacing:1.5,trackWidth:3,pieces:{straight_15:{id:'S15',length:15,type:'straight'},straight_9:{id:'S9',length:9,type:'straight'},straight_6:{id:'S6',length:6,type:'straight'},straight_3:{id:'S3',length:3,type:'straight'},terminal:{id:'TERM',length:15,type:'straight',isTerminal:true},crisscross:{id:'CX9',length:9,type:'straight',isLaneChanger:true},squeeze:{id:'SQ9',length:9,type:'straight',isSqueeze:true},curve_3:{id:'C3',radius:1.5,degree:180,type:'curve',isHairpin:true,straightLength:6},curve_6:{id:'C6',radius:6,degree:45,type:'curve'},curve_9:{id:'C9',radius:9,degree:90,type:'curve'},curve_9_45:{id:'C9_45',radius:9,degree:45,type:'curve'},curve_12:{id:'C12',radius:12,degree:45,type:'curve'},curve_15:{id:'C15',radius:15,degree:45,type:'curve'},curve_18:{id:'C18',radius:18,degree:45,type:'curve'}}},TYCO:{name:"Tyco / Mattel",color:"#dc2626",trackColor:"#94a3b8",laneSpacing:1.5,trackWidth:3,pieces:{straight_15:{id:'S15',length:15,type:'straight'},straight_9:{id:'S9',length:9,type:'straight'},straight_6:{id:'S6',length:6,type:'straight'},straight_3:{id:'S3',length:3,type:'straight'},terminal:{id:'TERM9',length:9,type:'straight',isTerminal:true},crisscross:{id:'CX9',length:9,type:'straight',isLaneChanger:true},squeeze:{id:'SQ15',length:15,type:'straight',isSqueeze:true},curve_6_90:{id:'C6_90',radius:6,degree:90,type:'curve'},curve_9:{id:'C9',radius:9,degree:90,type:'curve'},curve_9_45:{id:'C9_45',radius:9,degree:45,type:'curve'},curve_12:{id:'C12',radius:12,degree:45,type:'curve'}}}};
 
+const TRACK_HALF_WIDTH = 1.5; 
+
 const toRad = (deg) => deg * Math.PI / 180;
 const cmToInch = (cm) => cm / 2.54;
 const stringToColor = (str) => {
@@ -49,17 +51,27 @@ const scissorCursor = `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.or
 
 const computePieceGeo = (p, x, y, h) => {
     const len = Number(p.length) || 0;
-    const r = Number(p.radius) || 0;
+    // Interpret p.radius as Outer Radius, convert to Center Radius
+    // EXCEPTION: Hairpin radius is ALREADY Center Radius (1.5)
+    let r = Number(p.radius) || 0;
+    if (r > 0 && !p.isHairpin) {
+        r = Math.max(0, r - 1.5); // Hardcoded 1.5 for safety
+    }
+    
     const deg = Number(p.degree) || 0;
     const sl = Number(p.straightLength) || 0;
     const dir = Number(p.dir) || 1;
 
     if (p.isHairpin) {
-        x += Math.cos(toRad(h)) * sl; y += Math.sin(toRad(h)) * sl;
+        // Calculate Hairpin: Straight -> Curve -> Straight
+        x += Math.cos(toRad(h)) * sl; 
+        y += Math.sin(toRad(h)) * sl;
         const cA = h + (dir * 90);
         const eA = cA + 180 + deg * dir;
-        const cx = x + Math.cos(toRad(cA)) * r; const cy = y + Math.sin(toRad(cA)) * r;
-        const ex = cx + Math.cos(toRad(eA)) * r; ey = cy + Math.sin(toRad(eA)) * r;
+        const cx = x + Math.cos(toRad(cA)) * r; 
+        const cy = y + Math.sin(toRad(cA)) * r;
+        const ex = cx + Math.cos(toRad(eA)) * r; 
+        const ey = cy + Math.sin(toRad(eA)) * r;
         h += deg * dir;
         const endX = ex + Math.cos(toRad(h)) * sl; 
         const endY = ey + Math.sin(toRad(h)) * sl;
@@ -71,7 +83,8 @@ const computePieceGeo = (p, x, y, h) => {
     } else {
         const cA = h + (dir * 90);
         const eA = cA + 180 + deg * dir;
-        const cx = x + Math.cos(toRad(cA)) * r; const cy = y + Math.sin(toRad(cA)) * r;
+        const cx = x + Math.cos(toRad(cA)) * r; 
+        const cy = y + Math.sin(toRad(cA)) * r;
         const endX = cx + Math.cos(toRad(eA)) * r; 
         const endY = cy + Math.sin(toRad(eA)) * r;
         const endH = h + deg * dir;
@@ -292,7 +305,10 @@ const App = () => {
     // MOVED: getPieceLength helper for reuse
     const getPieceLength = (p) => {
         if (Number(p.radius) > 0) {
-            const r = Number(p.radius);
+            // *** MODIFICATION: Calculate length based on CENTER line radius ***
+            // The p.radius is OUTER. Center is p.radius - 1.5
+            // *** EXCEPTION: Hairpin radius is ALREADY center radius ***
+            const r = Math.max(0, Number(p.radius) - (p.isHairpin ? 0 : 1.5));
             const deg = Number(p.degree) || 0;
             let l = (2 * Math.PI * r * (deg / 360));
             if (p.isHairpin) {
@@ -557,8 +573,14 @@ const App = () => {
                     if (previewPiece.type === 'straight') { dx = Math.cos(toRad(newStartH)) * previewPiece.length; dy = Math.sin(toRad(newStartH)) * previewPiece.length; } else {
                         const r = previewPiece.radius; const dir = previewPiece.dir;
                         const cA = newStartH + (dir*90); const sAng = toRad(cA+180); const eAng = sAng + toRad(previewPiece.degree*dir);
-                        const cx = Math.cos(toRad(cA))*r; const cy = Math.sin(toRad(cA))*r;
-                        dx = cx + Math.cos(eAng)*r; dy = cy + Math.sin(eAng)*r;
+                        
+                        // *** MODIFICATION: r is OUTER radius. Center for endpoints calculation needs adjustment ***
+                        // To find endpoint of a curve given OUTER radius r:
+                        // The actual arc path is r - 1.5
+                        const centerR = Math.max(0, r - 1.5);
+                        
+                        const cx = Math.cos(toRad(cA))*centerR; const cy = Math.sin(toRad(cA))*centerR;
+                        dx = cx + Math.cos(eAng)*centerR; dy = cy + Math.sin(eAng)*centerR;
                     }
                     startPt = worldToScreen(pts.start.x - dx, pts.start.y - dy); startHeading = newStartH;
                 } else { startPt = worldToScreen(pts.end.x, pts.end.y); startHeading = pts.end.heading; }
@@ -566,7 +588,7 @@ const App = () => {
             ctx.globalAlpha = 0.5; ctx.lineCap = 'butt'; ctx.lineWidth = bodyWidth; ctx.strokeStyle = '#9ca3af'; ctx.setLineDash([5, 5]); ctx.beginPath();
             
             if (previewPiece.isHairpin) {
-                 const slPx = previewPiece.straightLength * effectiveScale; const rPx = previewPiece.radius * effectiveScale;
+                 const slPx = previewPiece.straightLength * effectiveScale; const rPx = (previewPiece.radius) * effectiveScale; // Use CENTER (radius is already center for hairpin)
                  let tempX = startPt.x, tempY = startPt.y, tempH = startHeading;
                  let ex = tempX + Math.cos(toRad(tempH)) * slPx; let ey = tempY + Math.sin(toRad(tempH)) * slPx;
                  ctx.moveTo(tempX, tempY); ctx.lineTo(ex, ey); tempX = ex; tempY = ey;
@@ -584,7 +606,8 @@ const App = () => {
                 const endX = startPt.x + Math.cos(toRad(startHeading)) * len; const endY = startPt.y + Math.sin(toRad(startHeading)) * len;
                 ctx.moveTo(startPt.x, startPt.y); ctx.lineTo(endX, endY);
             } else {
-                const r = previewPiece.radius * effectiveScale; const rPx = r; const dir = previewPiece.dir;
+                const r = Math.max(0, previewPiece.radius - 1.5) * effectiveScale; // Use CENTER for drawing
+                const rPx = r; const dir = previewPiece.dir;
                 const cAngle = startHeading + (dir * 90); const cAngRad = toRad(cAngle);
                 const cxScreen = startPt.x + Math.cos(cAngRad) * rPx; const cyScreen = startPt.y + Math.sin(cAngRad) * rPx;
                 const sAng = toRad(cAngle + 180); const sweep = toRad(previewPiece.degree); const eAng = sAng + sweep * dir;
@@ -616,24 +639,35 @@ const App = () => {
                     // Geometry Drawing ...
                     if (p.isHairpin) {
                         const sl = p.straightLength; const r = p.radius; const dir = p.dir;
-                        // FIX: rPx defined BEFORE usage
+                        // *** MODIFICATION: Use Outer Radius to calculate drawing center ***
+                        // *** EXCEPTION: Hairpin radius is ALREADY Center Radius, so no subtraction ***
                         const rPx = r * scale; 
                         
                         ctx.beginPath();
                         let endX = curX + Math.cos(toRad(heading)) * sl; let endY = curY + Math.sin(toRad(heading)) * sl;
                         let p1 = worldToScreen(curX, curY); let p2 = worldToScreen(endX, endY);
                         ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y);
+                        
+                        // Update World Coords for math using CENTER radius
                         curX = endX; curY = endY;
+                        
+                        // Drawing Arc
                         const cAngle = heading + (dir * 90); const cxScreen = p2.x + Math.cos(toRad(cAngle)) * rPx; const cyScreen = p2.y + Math.sin(toRad(cAngle)) * rPx;
                         const sAng = toRad(cAngle + 180); const eAng = sAng + toRad(p.degree * dir);
                         
                         ctx.arc(cxScreen, cyScreen, rPx, sAng, eAng, dir === -1);
                         if (!isExport) { hitData.type = 'arc'; hitData.cx = cxScreen; hitData.cy = cyScreen; hitData.r = rPx; hitData.sAng = sAng; hitData.sweep = toRad(p.degree); hitData.dir = dir; }
+                        
+                        // Update World Coords
                         const endAngTotal = heading + (dir * 90) + 180 + (p.degree * dir);
-                        const cxWorld = curX + Math.cos(toRad(cAngle)) * r; const cyWorld = curY + Math.sin(toRad(cAngle)) * r;
-                        curX = cxWorld + Math.cos(toRad(endAngTotal)) * r; curY = cyWorld + Math.sin(toRad(endAngTotal)) * r;
+                        // IMPORTANT: For World Coord calc, we MUST use Center Radius (Hairpin is already center)
+                        const centerR = r; 
+                        const cxWorld = curX + Math.cos(toRad(cAngle)) * centerR; const cyWorld = curY + Math.sin(toRad(cAngle)) * centerR;
+                        curX = cxWorld + Math.cos(toRad(endAngTotal)) * centerR; curY = cyWorld + Math.sin(toRad(endAngTotal)) * centerR;
+                        
                         const savedStartHeading = heading;
                         heading += p.degree * dir;
+                        
                         endX = curX + Math.cos(toRad(heading)) * sl; endY = curY + Math.sin(toRad(heading)) * sl;
                         let p3 = worldToScreen(curX, curY); let p4 = worldToScreen(endX, endY);
                         ctx.moveTo(p3.x, p3.y); ctx.lineTo(p4.x, p4.y);
@@ -643,7 +677,9 @@ const App = () => {
                         curX = endX; curY = endY;
                         
                         // Lanes
-                        ctx.lineWidth = laneWidth * (isExport ? 1 : currentK); 
+                        // *** FIX: Hairpin lane width logic ***
+                        ctx.lineWidth = laneWidth; // Standard lane width logic
+                        
                         currentLaneOffsets.forEach((offset, i) => {
                             ctx.strokeStyle = currentPair[i % 2]; ctx.beginPath(); 
                             const offsetPx = offset * scale;
@@ -651,7 +687,11 @@ const App = () => {
                             const ls1 = p1.x + nx1 * offsetPx; const ls1y = p1.y + ny1 * offsetPx; 
                             const le1 = p2.x + nx1 * offsetPx; const le1y = p2.y + ny1 * offsetPx;
                             ctx.moveTo(ls1, ls1y); ctx.lineTo(le1, le1y);
-                            const rAdj = Math.max(0, p.radius - (offset * dir)) * scale; 
+                            
+                            // Adjust lane radius based on Center Radius (r)
+                            const centerR_val = p.radius;
+                            const rAdj = Math.max(0, centerR_val - (offset * dir)) * scale; 
+                            
                             ctx.arc(cxScreen, cyScreen, rAdj, sAng, eAng, dir === -1);
                             const nx2 = -Math.sin(toRad(heading)); const ny2 = Math.cos(toRad(heading));
                             const le2 = p4.x + nx2 * offsetPx; const le2y = p4.y + ny2 * offsetPx;
@@ -689,11 +729,19 @@ const App = () => {
                     } else {
                         const r = p.radius; const dir = p.dir; 
                         const cA = heading + (dir * 90);
-                        const cx = curX + Math.cos(toRad(cA)) * r; const cy = curY + Math.sin(toRad(cA)) * r;
-                        curX = cx + Math.cos(toRad(cA + 180 + p.degree*dir)) * r; 
-                        curY = cy + Math.sin(toRad(cA + 180 + p.degree*dir)) * r;
+                        
+                        // *** MODIFICATION: Use Center Radius for World Coord Calc ***
+                        const centerR = Math.max(0, r - 1.5);
+                        
+                        const cx = curX + Math.cos(toRad(cA)) * centerR; const cy = curY + Math.sin(toRad(cA)) * centerR;
+                        curX = cx + Math.cos(toRad(cA + 180 + p.degree*dir)) * centerR; 
+                        curY = cy + Math.sin(toRad(cA + 180 + p.degree*dir)) * centerR;
                         heading += p.degree * dir; 
-                        const centerPt = worldToScreen(cx, cy); const rPx = r * scale;
+                        
+                        const centerPt = worldToScreen(cx, cy); 
+                        // *** MODIFICATION: Use Center Radius for Drawing ***
+                        const rPx = centerR * scale;
+                        
                         const sAng = toRad(cA + 180); const eAng = sAng + toRad(p.degree * dir);
                         ctx.beginPath(); ctx.arc(centerPt.x, centerPt.y, rPx, sAng, eAng, dir === -1); ctx.stroke();
                         if (highlight) { ctx.lineWidth = bodyWidth + 4; ctx.strokeStyle = 'rgba(251, 191, 36, 0.5)'; ctx.stroke(); }
@@ -702,7 +750,8 @@ const App = () => {
                         ctx.lineWidth = laneWidth;
                         currentLaneOffsets.forEach((startOffset, i) => {
                             ctx.strokeStyle = currentPair[i % 2]; ctx.beginPath();
-                            const rAdj = Math.max(0, p.radius - (startOffset * dir)) * scale;
+                            // Lane offset is relative to Center Radius
+                            const rAdj = Math.max(0, centerR - (startOffset * dir)) * scale;
                             ctx.arc(centerPt.x, centerPt.y, rAdj, sAng, eAng, dir === -1); ctx.stroke();
                         });
                     }
@@ -2002,18 +2051,6 @@ const App = () => {
             <input type="file" ref={fileInputRef} onChange={handleFileChange} accept=".json" style={{ display: 'none' }} />
             <input type="file" ref={importInputRef} onChange={handleImportFileChange} accept=".json" style={{ display: 'none' }} />
             
-            {/* Split Mode Hint Overlay */}
-            {toolMode === 'split' && (
-                <div className="absolute top-20 left-1/2 -translate-x-1/2 z-50 pointer-events-none animate-in fade-in slide-in-from-top-2">
-                    <div className="bg-black/75 text-white px-4 py-2 rounded-full text-sm backdrop-blur-sm flex items-center gap-2 shadow-lg border border-white/10">
-                        <Scissors size={16} className="text-yellow-400" />
-                        <span className="font-bold">{pendingSplit ? t('split_phase2_hint') : t('split_mode_hint')}</span>
-                        <span className="opacity-50 mx-1">|</span>
-                        <span className="text-gray-300 text-xs">{t('split_exit_hint')}</span>
-                    </div>
-                </div>
-            )}
-
             {/* Notification Toast */}
             {notification !== null && (
                 <div className={`fixed bottom-4 right-4 px-4 py-2 rounded-lg shadow-xl text-sm font-bold flex items-center gap-2 animate-in slide-in-from-bottom-5 z-50 ${notification.type === 'error' ? 'bg-red-500 text-white' : 'bg-green-500 text-white'}`}>
