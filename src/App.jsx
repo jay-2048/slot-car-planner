@@ -10,7 +10,7 @@ import {
     Palette, Ruler, Copy, Focus, ArrowLeftRight
 } from 'lucide-react';
 
-const APP_VERSION = "v5.0.3 (Hairpin Crash Fix)";
+const APP_VERSION = "v5.0.4 (iPad UI Fix)";
 
 // ==========================================
 // 1. GLOBAL CONSTANTS & HELPERS (Outside Component)
@@ -34,6 +34,7 @@ const I18N={
 };
 const TRACK_DATA={AFX:{name:"Tomy AFX",color:"#2563eb",trackColor:"#334155",laneSpacing:1.5,trackWidth:3,pieces:{straight_15:{id:'S15',length:15,type:'straight'},straight_9:{id:'S9',length:9,type:'straight'},straight_6:{id:'S6',length:6,type:'straight'},straight_3:{id:'S3',length:3,type:'straight'},terminal:{id:'TERM',length:15,type:'straight',isTerminal:true},crisscross:{id:'CX9',length:9,type:'straight',isLaneChanger:true},squeeze:{id:'SQ9',length:9,type:'straight',isSqueeze:true},curve_3:{id:'C3',radius:1.5,degree:180,type:'curve',isHairpin:true,straightLength:6},curve_6:{id:'C6',radius:6,degree:45,type:'curve'},curve_9:{id:'C9',radius:9,degree:90,type:'curve'},curve_9_45:{id:'C9_45',radius:9,degree:45,type:'curve'},curve_12:{id:'C12',radius:12,degree:45,type:'curve'},curve_15:{id:'C15',radius:15,degree:45,type:'curve'},curve_18:{id:'C18',radius:18,degree:45,type:'curve'}}},TYCO:{name:"Tyco / Mattel",color:"#dc2626",trackColor:"#94a3b8",laneSpacing:1.5,trackWidth:3,pieces:{straight_15:{id:'S15',length:15,type:'straight'},straight_9:{id:'S9',length:9,type:'straight'},straight_6:{id:'S6',length:6,type:'straight'},straight_3:{id:'S3',length:3,type:'straight'},terminal:{id:'TERM9',length:9,type:'straight',isTerminal:true},crisscross:{id:'CX9',length:9,type:'straight',isLaneChanger:true},squeeze:{id:'SQ15',length:15,type:'straight',isSqueeze:true},curve_6_90:{id:'C6_90',radius:6,degree:90,type:'curve'},curve_9:{id:'C9',radius:9,degree:90,type:'curve'},curve_9_45:{id:'C9_45',radius:9,degree:45,type:'curve'},curve_12:{id:'C12',radius:12,degree:45,type:'curve'}}}};
 
+// *** KEY MODIFICATION: DEFINE HALF WIDTH ***
 const TRACK_HALF_WIDTH = 1.5; 
 
 const toRad = (deg) => deg * Math.PI / 180;
@@ -55,7 +56,7 @@ const computePieceGeo = (p, x, y, h) => {
     // EXCEPTION: Hairpin radius is ALREADY Center Radius (1.5)
     let r = Number(p.radius) || 0;
     if (r > 0 && !p.isHairpin) {
-        r = Math.max(0, r - 1.5); // Hardcoded 1.5 for safety
+        r = Math.max(0, r - TRACK_HALF_WIDTH); 
     }
     
     const deg = Number(p.degree) || 0;
@@ -306,9 +307,9 @@ const App = () => {
     const getPieceLength = (p) => {
         if (Number(p.radius) > 0) {
             // *** MODIFICATION: Calculate length based on CENTER line radius ***
-            // The p.radius is OUTER. Center is p.radius - 1.5
+            // The p.radius is OUTER. Center is p.radius - TRACK_HALF_WIDTH
             // *** EXCEPTION: Hairpin radius is ALREADY center radius ***
-            const r = Math.max(0, Number(p.radius) - (p.isHairpin ? 0 : 1.5));
+            const r = Math.max(0, Number(p.radius) - (p.isHairpin ? 0 : TRACK_HALF_WIDTH));
             const deg = Number(p.degree) || 0;
             let l = (2 * Math.PI * r * (deg / 360));
             if (p.isHairpin) {
@@ -2034,7 +2035,7 @@ const App = () => {
     }, [viewTransform]);
 
     return (
-        <div className="h-screen w-full bg-gray-50 font-sans relative overflow-hidden text-gray-800 select-none" onWheel={handleWheel} onContextMenu={(e) => { e.preventDefault(); if(toolMode==='split') { setToolMode('select'); setPendingSplit(null); } }}>
+        <div className="fixed inset-0 w-full h-full bg-gray-50 font-sans overflow-hidden text-gray-800 select-none" onWheel={handleWheel} onContextMenu={(e) => { e.preventDefault(); if(toolMode==='split') { setToolMode('select'); setPendingSplit(null); } }}>
             <canvas ref={canvasRef} width={canvasSize.width} height={canvasSize.height} 
                 className="absolute inset-0 w-full h-full touch-none z-0" 
                 style={{ 
@@ -2051,6 +2052,18 @@ const App = () => {
             <input type="file" ref={fileInputRef} onChange={handleFileChange} accept=".json" style={{ display: 'none' }} />
             <input type="file" ref={importInputRef} onChange={handleImportFileChange} accept=".json" style={{ display: 'none' }} />
             
+            {/* Split Mode Hint Overlay */}
+            {toolMode === 'split' && (
+                <div className="absolute top-20 left-1/2 -translate-x-1/2 z-50 pointer-events-none animate-in fade-in slide-in-from-top-2">
+                    <div className="bg-black/75 text-white px-4 py-2 rounded-full text-sm backdrop-blur-sm flex items-center gap-2 shadow-lg border border-white/10">
+                        <Scissors size={16} className="text-yellow-400" />
+                        <span className="font-bold">{pendingSplit ? t('split_phase2_hint') : t('split_mode_hint')}</span>
+                        <span className="opacity-50 mx-1">|</span>
+                        <span className="text-gray-300 text-xs">{t('split_exit_hint')}</span>
+                    </div>
+                </div>
+            )}
+
             {/* Notification Toast */}
             {notification !== null && (
                 <div className={`fixed bottom-4 right-4 px-4 py-2 rounded-lg shadow-xl text-sm font-bold flex items-center gap-2 animate-in slide-in-from-bottom-5 z-50 ${notification.type === 'error' ? 'bg-red-500 text-white' : 'bg-green-500 text-white'}`}>
@@ -2178,7 +2191,7 @@ const App = () => {
 
             {/* Bottom Controls */}
             {showUI && selected !== null && toolMode === 'select' && (
-                <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-20 bg-white px-6 py-3 rounded-full shadow-2xl border border-gray-200 flex items-center gap-6 animate-in slide-in-from-bottom-4 fade-in duration-200 pointer-events-auto">
+                <div className="absolute bottom-12 left-1/2 -translate-x-1/2 z-20 bg-white px-6 py-3 rounded-full shadow-2xl border border-gray-200 flex items-center gap-6 animate-in slide-in-from-bottom-4 fade-in duration-200 pointer-events-auto">
                     <div className="flex gap-2 border-r pr-6">
                         <button onClick={() => rotateSection(-22.5)} className="p-2 hover:bg-gray-100 rounded-full text-gray-600 tooltip" title={t('rotate_left')}><RotateCcw size={20} /></button>
                         <button onClick={() => rotateSection(22.5)} className="p-2 hover:bg-gray-100 rounded-full text-gray-600 tooltip" title={t('rotate_right')}><RotateCcw size={20} className="scale-x-[-1]"/></button>
